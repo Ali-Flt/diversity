@@ -2,6 +2,7 @@ from typing import Optional
 from diversity import get_pos, pos_patterns, token_patterns, compression_ratio
 from transformers import pipeline
 from datasets import load_dataset
+import torch
 
 import typer
 
@@ -9,10 +10,11 @@ app = typer.Typer()
 
 @app.command()
 def summarization(
-        dataset: str,
-        column: str,
-        split: str,
-        model: str = "t5-base",
+        dataset: str = 'cnn_dailymail',
+        dataset_config: str = '3.0.0',
+        column: str = 'article',
+        split: str = 'test',
+        model: str = 'meta-llama/Meta-Llama-3.1-8B-Instruct',
         tokenizer: Optional[str] = None,
         ngram: Optional[int] = 5
 ):
@@ -22,17 +24,21 @@ def summarization(
         "summarization",
         model=model,
         tokenizer=tokenizer,
-        return_text=True)
+        return_text=True,
+        device_map='auto',
+        torch_dtype=torch.float16)
     
     # load dataset (either custom CSV or dataset from HF)
     if dataset.endswith('.csv'): 
         data = load_dataset("csv", data_files=dataset)[split][:10][column]
     else: 
-        data = load_dataset(dataset)
+        data = load_dataset(dataset, dataset_config)
         data = data[split][:10][column]
 
     # generate the summaries
-    outputs = summarizer(data)
+    outputs = summarizer(data,
+                         max_new_tokens=100,
+                         )
     outputs = [instance['summary_text'] for instance in outputs]
 
     # get the token-level patterns
@@ -46,7 +52,7 @@ def summarization(
     text_matches = {}
 
     for pattern, _ in ngrams_pos:
-        text_matches['pattern'] = pos_patterns(tuples, pattern)
+        text_matches[pattern] = pos_patterns(tuples, pattern)
 
     # get the compression score
     compression = compression_ratio(outputs, 'gzip')
