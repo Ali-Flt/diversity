@@ -1,5 +1,3 @@
-import numpy as np
-import itertools
 from diversity import memoized
 from typing import List, Optional
 from tqdm import tqdm
@@ -37,11 +35,7 @@ def homogenization_score(
         raise ValueError("Scoring measure must be one of `rougel`, `bleu`, or `bertscore`.")
 
     # all pairs of comparisons (cartesian product) without repetition at the same index
-    all_pairs = ((data[i], data[j]) 
-                    for i in range(len(data))
-                    for j in range(len(data))
-                    if i != j)
-
+    all_pairs = [(data[i], data[j]) for i in range(len(data)) for j in range(len(data)) if i != j]
     curr_str = data[0]
     corpus_score = 0
     doc_score = 0
@@ -62,7 +56,7 @@ def homogenization_score(
         corpus_score += doc_score 
     
     # returns corpus level homogenization score 
-    return round(corpus_score / len(list(all_pairs)), 3)
+    return round(corpus_score / len(all_pairs), 3)
 
 
 @memoized

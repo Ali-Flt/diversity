@@ -1,10 +1,11 @@
 from typing import Optional
-from diversity import get_pos, pos_patterns, token_patterns, compression_ratio
-from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
+from nltk.tokenize import sent_tokenize
 import torch
-
 import typer
+from diversity import homogenization_score, compression_ratio, ngram_diversity_score, get_pos, self_repetition
+from lexical_diversity import lex_div as ld
 
 app = typer.Typer()
 
@@ -20,49 +21,52 @@ def summarization(
 ):
     tokenizer = tokenizer or model
 
-    summarizer = pipeline(
-        "summarization",
-        model=model,
-        tokenizer=tokenizer,
-        return_text=True,
-        device_map='auto',
-        torch_dtype=torch.float16)
-    
+    model = AutoModelForCausalLM.from_pretrained(
+        model,
+        device_map="auto",
+        torch_dtype=torch.float16
+    )
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer,
+                                              padding_side="left")
+    tokenizer.pad_token = tokenizer.eos_token
     # load dataset (either custom CSV or dataset from HF)
     if dataset.endswith('.csv'): 
         data = load_dataset("csv", data_files=dataset)[split][:10][column]
     else: 
         data = load_dataset(dataset, dataset_config)
-        data = data[split][:10][column]
+        data = data[split][:20][column]
+    data = [d + ' [INST] Summarize the above text. [/INST] ' for d in data]
+    outputs = []
 
-    # generate the summaries
-    outputs = summarizer(data,
-                         max_new_tokens=100,
-                         )
-    outputs = [instance['summary_text'] for instance in outputs]
-
-    # get the token-level patterns
-    patterns_token = token_patterns(outputs, ngram)
+    for d in data:
+        input = tokenizer(d, padding=True, return_tensors="pt").to('cuda')
+        input_length = input.input_ids.shape[1]
+        outputs.append(tokenizer.batch_decode(model.generate(**input, max_new_tokens=100, do_sample=False, pad_token_id=tokenizer.eos_token_id)[:, input_length:], skip_special_tokens=True)[0])
     
-    # get the POS patterns 
-    joined_pos, tuples = get_pos(outputs)
-    ngrams_pos = token_patterns(joined_pos, ngram)
-
-    # for the top n-gram patterns, cycle through and get the matching text
-    text_matches = {}
-
-    for pattern, _ in ngrams_pos:
-        text_matches[pattern] = pos_patterns(tuples, pattern)
-
-    # get the compression score
+    joint_outputs = ' '.join(outputs)
+    tokenized_outputs = sent_tokenize(joint_outputs)
+    flt = ld.flemmatize(joint_outputs)
+    joined_pos, _ = get_pos(tokenized_outputs)
+    
+    bleu = homogenization_score(outputs, 'bleu')
+    rougel = homogenization_score(outputs, 'rougel')
+    bertscore = homogenization_score(outputs, 'bertscore')
+    self_repetition_score = self_repetition(outputs)
+    mattr = ld.mattr(flt)
+    diversity_score = ngram_diversity_score(outputs, ngram-1)
+    hdd = ld.hdd(flt)
     compression = compression_ratio(outputs, 'gzip')
-
-    # TODO: function to nicely display results
-    print(patterns_token)
-    print(text_matches)
+    pos_compression = compression_ratio(joined_pos, 'gzip')
+    
+    print(bleu)
+    print(rougel)
+    print(bertscore)
+    print(self_repetition_score)
+    print(mattr)
+    print(diversity_score)
+    print(hdd)
     print(compression)
-
-    # TODO: compare between two models
+    print(pos_compression)
     return 
 
 

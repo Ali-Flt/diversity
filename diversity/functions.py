@@ -1,10 +1,7 @@
 """ Functions for extracting patterns and matching text to patterns. """
 
-import numpy as np
-import itertools
-from typing import List, Optional
-from tqdm import tqdm
-from pattern import token_patterns, get_pos, pos_patterns
+from typing import List
+from .patterns import token_patterns, get_pos, pos_patterns
 from nltk.tokenize import sent_tokenize
 
 def extract_patterns(text: List[str], 
@@ -43,17 +40,17 @@ def extract_patterns(text: List[str],
     outputs = sent_tokenize(' '.join(text))
 
     # get the token (word)-level patterns
-    patterns_token  =  token_patterns(outputs, n)
+    patterns_token = token_patterns(outputs, n)
 
     # get the part-of-speech patterns (only include top_n patterns)
-    joined_pos, tuples  =  get_pos(outputs)
-    ngrams_pos  =  token_patterns(joined_pos, n, top_n)
+    joined_pos, tuples = get_pos(outputs)
+    ngrams_pos = token_patterns(joined_pos, n, top_n)
 
     # for the top n-gram patterns, cycle through and get the matching text
     text_matches  = {}
 
-    for  pattern, _  in  ngrams_pos:
-        text_matches[pattern] =  pos_patterns(tuples, pattern)
+    for pattern, _ in ngrams_pos:
+        text_matches[pattern] = pos_patterns(tuples, pattern)
     
     return text_matches
 
